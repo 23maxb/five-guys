@@ -2,3 +2,6 @@ node_modules/
 *.log
 .env
 dist/
+.venv/
+.gitignore
+yumyumapp/node_modules
