@@ -68,7 +68,7 @@ five-guys/
 
 ## Default Credentials
 
-- **Superuser**: admin / admin123
+- **Superuser**: fiveguys  / 123456
 - **Admin Panel**: http://localhost:8000/admin/
 
 ## Running the Full Application
