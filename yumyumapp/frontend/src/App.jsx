@@ -4,6 +4,7 @@ import LoginPage from "./pages/Login";
 import Home from "./pages/Home";
 import Calendar from "./pages/Calender";
 import Fridge from "./pages/Fridge";
+import Register from "./pages/Register";
 import ProtectedRoute from "./auth/ProtectedRoute";
 
 export default function App() {
@@ -26,6 +27,9 @@ export default function App() {
           <Fridge />
         </ProtectedRoute>
       } />
+        <Route path="/register" element={
+                <Register />
+        } /> 
     </Routes>
   );
 }
