@@ -8,6 +8,32 @@ from django.contrib.auth.models import User
 
 from .models import Fridge, FridgeItem
 from .serializers import FridgeSerializer, FridgeItemSerializer
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def api_root(request):
+    """
+    API root endpoint that lists available API endpoints
+    """
+    return Response({
+        'message': 'YumYum API',
+        'version': '1.0',
+        'endpoints': {
+            'auth': {
+                'login': '/api/login/',
+                'register': '/api/register/',
+                'logout': '/api/logout/',
+                'profile': '/api/profile/',
+            },
+            'fridge': {
+                'view': '/api/fridge/',
+                'add_item': '/api/fridge/add/',
+                'remove_item': '/api/fridge/item/<id>/remove/',
+                'clear': '/api/fridge/clear/',
+            }
+        }
+    })
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_view(request):
