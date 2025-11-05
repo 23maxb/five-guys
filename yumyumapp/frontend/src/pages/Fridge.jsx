@@ -121,6 +121,9 @@ export default function Fridge() {
                 </li>
               ))}
             </ul>
+            <Link to="/recipes">
+                <button style={{ marginTop: "20px", marginRight: "10px", padding: "10px 15px", background: "royalblue", color: "white", border: "none", cursor: "pointer" }}>Recommend Recipes</button>
+            </Link>
             <button onClick={handleClearFridge} style={{ marginTop: "20px", background: "darkred", color: "white" }}>Clear Entire Fridge</button>
           </>
         ) : (

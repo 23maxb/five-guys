@@ -5,9 +5,11 @@ from rest_framework.response import Response
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
 from django.contrib.auth.models import User
-
+import requests
 from .models import Fridge, FridgeItem
 from .serializers import FridgeSerializer, FridgeItemSerializer
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_view(request):
@@ -16,22 +18,22 @@ def login_view(request):
     """
     email = request.data.get('email')
     password = request.data.get('password')
-    
+
     if not email or not password:
         return Response(
-            {'error': 'Email and password are required'}, 
+            {'error': 'Email and password are required'},
             status=status.HTTP_400_BAD_REQUEST
         )
-    
+
     # Find user by email (assuming email is stored in username field for simplicity)
     try:
         user = User.objects.get(email=email)
     except User.DoesNotExist:
         return Response(
-            {'error': 'Invalid credentials'}, 
+            {'error': 'Invalid credentials'},
             status=status.HTTP_401_UNAUTHORIZED
         )
-    
+
     # Authenticate user
     user = authenticate(username=user.username, password=password)
     if user:
@@ -46,9 +48,10 @@ def login_view(request):
         })
     else:
         return Response(
-            {'error': 'Invalid credentials'}, 
+            {'error': 'Invalid credentials'},
             status=status.HTTP_401_UNAUTHORIZED
         )
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -59,20 +62,20 @@ def register_view(request):
     email = request.data.get('email')
     password = request.data.get('password')
     name = request.data.get('name', '')
-    
+
     if not email or not password:
         return Response(
-            {'error': 'Email and password are required'}, 
+            {'error': 'Email and password are required'},
             status=status.HTTP_400_BAD_REQUEST
         )
-    
+
     # Check if user already exists
     if User.objects.filter(email=email).exists():
         return Response(
-            {'error': 'User with this email already exists'}, 
+            {'error': 'User with this email already exists'},
             status=status.HTTP_400_BAD_REQUEST
         )
-    
+
     # Create new user
     user = User.objects.create_user(
         username=email,  # Using email as username
@@ -80,10 +83,10 @@ def register_view(request):
         password=password,
         first_name=name
     )
-    
+
     # Create token for new user
     token = Token.objects.create(user=user)
-    
+
     return Response({
         'token': token.key,
         'user': {
@@ -92,6 +95,7 @@ def register_view(request):
             'name': user.first_name or user.username
         }
     }, status=status.HTTP_201_CREATED)
+
 
 @api_view(['POST'])
 def logout_view(request):
@@ -103,6 +107,7 @@ def logout_view(request):
         return Response({'message': 'Successfully logged out'})
     except:
         return Response({'message': 'Successfully logged out'})
+
 
 @api_view(['GET'])
 def user_profile(request):
@@ -144,7 +149,7 @@ def add_fridge_item(request):
     # Check if item already exists and update quantity
     item, created = FridgeItem.objects.get_or_create(
         fridge=fridge,
-        name__iexact=name, # Case-insensitive check
+        name__iexact=name,  # Case-insensitive check
         defaults={'name': name, 'quantity': quantity}
     )
 
@@ -182,3 +187,39 @@ def clear_fridge(request):
     except Fridge.DoesNotExist:
         # If the fridge doesn't exist, there's nothing to clear.
         return Response({'message': 'Fridge is already empty.'}, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+def find_recipes_by_ingredients(request):
+    """
+    Finds recipes based on the ingredients in the user's fridge
+    by calling the Spoonacular API.
+    """
+    SPOONACULAR_API_KEY = '760dae2f56cd42d7b7ffc86d6a78a5a6'
+
+    try:
+        fridge = Fridge.objects.get(user=request.user, name='Main Fridge')
+        ingredients = [item.name for item in fridge.items.all()]
+    except Fridge.DoesNotExist:
+        ingredients = []
+
+    if not ingredients:
+        return Response({'message': 'Your fridge is empty. Add some items to find recipes.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    ingredients_str = ",".join(ingredients)
+
+    params = {
+        'ingredients': ingredients_str,
+        'number': 10,  # Return up to 10 recipes
+        'ranking': 1,  # Maximize used ingredients
+        'ignorePantry': True,
+        'apiKey': SPOONACULAR_API_KEY
+    }
+
+    response = requests.get('https://api.spoonacular.com/recipes/findByIngredients', params=params)
+
+    if response.status_code == 200:
+        return Response(response.json())
+    else:
+        return Response({'error': 'Failed to fetch recipes from Spoonacular.'}, status=response.status_code)
