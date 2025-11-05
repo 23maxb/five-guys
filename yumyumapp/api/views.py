@@ -6,6 +6,8 @@ from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
 from django.contrib.auth.models import User
 
+from .models import Fridge, FridgeItem
+from .serializers import FridgeSerializer, FridgeItemSerializer
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_view(request):
@@ -114,3 +116,69 @@ def user_profile(request):
             'name': request.user.first_name or request.user.username
         }
     })
+
+
+@api_view(['GET'])
+def view_fridge(request):
+    """
+    View the contents of the user's default fridge.
+    """
+    fridge, created = Fridge.objects.get_or_create(user=request.user, name='Main Fridge')
+    serializer = FridgeSerializer(fridge)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+def add_fridge_item(request):
+    """
+    Add an item to the user's default fridge.
+    Expects {'name': 'item_name', 'quantity': 1} in the request body.
+    """
+    fridge, _ = Fridge.objects.get_or_create(user=request.user, name='Main Fridge')
+    name = request.data.get('name')
+    quantity = request.data.get('quantity', 1)
+
+    if not name:
+        return Response({'error': 'Item name is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Check if item already exists and update quantity
+    item, created = FridgeItem.objects.get_or_create(
+        fridge=fridge,
+        name__iexact=name, # Case-insensitive check
+        defaults={'name': name, 'quantity': quantity}
+    )
+
+    if not created:
+        # If item already existed, update its quantity
+        item.quantity += int(quantity)
+        item.save()
+
+    serializer = FridgeItemSerializer(item)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['DELETE'])
+def remove_fridge_item(request, item_id):
+    """
+    Remove an item from the fridge by its ID.
+    """
+    try:
+        item = FridgeItem.objects.get(id=item_id, fridge__user=request.user)
+        item.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    except FridgeItem.DoesNotExist:
+        return Response({'error': 'Item not found in your fridge.'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['DELETE'])
+def clear_fridge(request):
+    """
+    Remove all items from the user's default fridge.
+    """
+    try:
+        fridge = Fridge.objects.get(user=request.user, name='Main Fridge')
+        fridge.items.all().delete()
+        return Response({'message': 'Fridge has been cleared.'}, status=status.HTTP_200_OK)
+    except Fridge.DoesNotExist:
+        # If the fridge doesn't exist, there's nothing to clear.
+        return Response({'message': 'Fridge is already empty.'}, status=status.HTTP_200_OK)

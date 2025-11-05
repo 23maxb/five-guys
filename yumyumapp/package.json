@@ -5,8 +5,8 @@
   "scripts": {
     "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
     "backend": "cd . && python manage.py runserver",
-    "migrate": "python manage.py migrate && npm run backend",
-    "backend_unit_tests": "python manage.py test api.views_test",
+    "migrate": "python manage.py makemigrations && python manage.py migrate && npm run backend",
+    "backend_unit_tests": "python manage.py test api",
     "frontend": "cd frontend && npm run dev",
     "install-all": "npm install && cd frontend && npm install",
     "build": "cd frontend && npm run build",
