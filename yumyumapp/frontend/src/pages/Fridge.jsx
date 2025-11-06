@@ -392,6 +392,21 @@ function loadMetadata() {
   }
 }
 
+function isExpiringWithinWeek(expirationDate) {
+  if (!expirationDate) return false;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const expDate = new Date(expirationDate);
+  expDate.setHours(0, 0, 0, 0);
+
+  const oneWeekFromNow = new Date(today);
+  oneWeekFromNow.setDate(today.getDate() + 7);
+
+  return expDate <= oneWeekFromNow;
+}
+
 export default function Fridge() {
   const { token } = useAuth();
 
@@ -1013,7 +1028,18 @@ export default function Fridge() {
                       </td>
                       <td style={styles.tableCell}>
                         {expiresOn ? (
-                          expiresOn
+                          <span
+                            style={{
+                              color: isExpiringWithinWeek(expiresOn)
+                                ? "#ef4444"
+                                : "#0f172a",
+                              fontWeight: isExpiringWithinWeek(expiresOn)
+                                ? 600
+                                : "normal",
+                            }}
+                          >
+                            {expiresOn}
+                          </span>
                         ) : (
                           <span style={styles.muted}>—</span>
                         )}
