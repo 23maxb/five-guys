@@ -5,6 +5,7 @@ import Navbar from "../components/Navbar";
 import {
   viewFridge,
   addFridgeItem,
+  updateFridgeItemQuantity,
   removeFridgeItem,
   clearFridge,
 } from "../lib/api_fridge";
@@ -380,6 +381,34 @@ const styles = {
     fontWeight: 600,
     cursor: "pointer",
   },
+  quantityContainer: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    position: "relative",
+  },
+  stepperButton: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    border: "1px solid #cbd5f5",
+    background: "#fff",
+    color: "#475569",
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    display: "grid",
+    placeItems: "center",
+    transition: "all 0.15s ease",
+    "&:hover": {
+      background: "#f1f5f9",
+      borderColor: "#94a3b8",
+    },
+  },
+  quantityText: {
+    minWidth: 40,
+    textAlign: "center",
+  },
 };
 
 function loadMetadata() {
@@ -423,6 +452,7 @@ export default function Fridge() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [seeding, setSeeding] = useState(false);
   const [autoSeedAttempted, setAutoSeedAttempted] = useState(false);
+  const [hoveredItemId, setHoveredItemId] = useState(null);
 
   const [newItem, setNewItem] = useState({
     name: "",
@@ -615,6 +645,31 @@ export default function Fridge() {
       await fetchFridgeContents();
     } catch (err) {
       setError(err.message || "Failed to add item.");
+    }
+  };
+
+  const handleUpdateQuantity = async (itemId, newQuantity) => {
+    try {
+      setError(null);
+      setStatus(null);
+      const result = await updateFridgeItemQuantity(token, itemId, newQuantity);
+
+      if (result === null) {
+        // Item was removed due to quantity reaching 0
+        updateMetadata((prev) => {
+          const next = { ...prev };
+          delete next[itemId];
+          return next;
+        });
+        setSelectedIds((prev) => prev.filter((id) => id !== itemId));
+        setStatus("Item removed.");
+      } else {
+        setStatus("Quantity updated.");
+      }
+
+      await fetchFridgeContents();
+    } catch (err) {
+      setError(err.message || "Failed to update quantity.");
     }
   };
 
@@ -1011,8 +1066,46 @@ export default function Fridge() {
                           <span style={styles.itemName}>{item.name}</span>
                         </div>
                       </td>
-                      <td style={styles.tableCell}>
-                        {item.quantity} {unit ? unit.toLowerCase() : ""}
+                      <td
+                        style={styles.tableCell}
+                        onMouseEnter={() => setHoveredItemId(item.id)}
+                        onMouseLeave={() => setHoveredItemId(null)}
+                      >
+                        {hoveredItemId === item.id ? (
+                          <div style={styles.quantityContainer}>
+                            <button
+                              style={styles.stepperButton}
+                              onClick={() =>
+                                handleUpdateQuantity(
+                                  item.id,
+                                  item.quantity - 1
+                                )
+                              }
+                              title="Decrease quantity"
+                            >
+                              −
+                            </button>
+                            <span style={styles.quantityText}>
+                              {item.quantity} {unit ? unit.toLowerCase() : ""}
+                            </span>
+                            <button
+                              style={styles.stepperButton}
+                              onClick={() =>
+                                handleUpdateQuantity(
+                                  item.id,
+                                  item.quantity + 1
+                                )
+                              }
+                              title="Increase quantity"
+                            >
+                              +
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            {item.quantity} {unit ? unit.toLowerCase() : ""}
+                          </>
+                        )}
                       </td>
                       <td style={styles.tableCell}>
                         {storage || (

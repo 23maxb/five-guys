@@ -50,6 +50,28 @@ export async function addFridgeItem(token: string, item: AddFridgeItemRequest): 
   return await response.json();
 }
 
+export async function updateFridgeItemQuantity(token: string, itemId: number, quantity: number): Promise<FridgeItem | null> {
+  const response = await fetch(`${API_BASE_URL}/fridge/item/${itemId}/update/`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Token ${token}`,
+    },
+    body: JSON.stringify({ quantity }),
+  });
+
+  if (!response.ok && response.status !== 204) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to update item quantity');
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return await response.json();
+}
+
 export async function removeFridgeItem(token: string, itemId: number): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/fridge/item/${itemId}/remove/`, {
     method: 'DELETE',
