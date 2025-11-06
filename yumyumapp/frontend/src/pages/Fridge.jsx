@@ -381,32 +381,40 @@ const styles = {
     fontWeight: 600,
     cursor: "pointer",
   },
-  quantityContainer: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    position: "relative",
+  quantityCell: {
+    minWidth: 120,
+    textAlign: "center",
   },
-  stepperButton: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
+  quantityContainer: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  stepperButton: (isVisible) => ({
+    width: 18,
+    height: 18,
+    borderRadius: 4,
     border: "1px solid #cbd5f5",
     background: "#fff",
     color: "#475569",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 600,
     cursor: "pointer",
-    display: "grid",
-    placeItems: "center",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    lineHeight: 1,
+    padding: 0,
     transition: "all 0.15s ease",
-    "&:hover": {
-      background: "#f1f5f9",
-      borderColor: "#94a3b8",
-    },
-  },
+    flexShrink: 0,
+    opacity: isVisible ? 1 : 0,
+    pointerEvents: isVisible ? "auto" : "none",
+  }),
   quantityText: {
-    minWidth: 40,
+    display: "inline-block",
+    minWidth: 50,
+    whiteSpace: "nowrap",
     textAlign: "center",
   },
 };
@@ -652,6 +660,27 @@ export default function Fridge() {
     try {
       setError(null);
       setStatus(null);
+
+      // Optimistic update - update local state immediately
+      setFridge((prevFridge) => {
+        if (!prevFridge) return prevFridge;
+
+        if (newQuantity <= 0) {
+          // Remove item if quantity is 0
+          return {
+            ...prevFridge,
+            items: prevFridge.items.filter((item) => item.id !== itemId),
+          };
+        }
+
+        return {
+          ...prevFridge,
+          items: prevFridge.items.map((item) =>
+            item.id === itemId ? { ...item, quantity: newQuantity } : item
+          ),
+        };
+      });
+
       const result = await updateFridgeItemQuantity(token, itemId, newQuantity);
 
       if (result === null) {
@@ -662,14 +691,11 @@ export default function Fridge() {
           return next;
         });
         setSelectedIds((prev) => prev.filter((id) => id !== itemId));
-        setStatus("Item removed.");
-      } else {
-        setStatus("Quantity updated.");
       }
-
-      await fetchFridgeContents();
     } catch (err) {
       setError(err.message || "Failed to update quantity.");
+      // Revert on error
+      await fetchFridgeContents();
     }
   };
 
@@ -1038,7 +1064,9 @@ export default function Fridge() {
                     />
                   </th>
                   <th style={styles.tableHeadCell}>Item</th>
-                  <th style={styles.tableHeadCell}>Quantity</th>
+                  <th style={{ ...styles.tableHeadCell, textAlign: "center" }}>
+                    Quantity
+                  </th>
                   <th style={styles.tableHeadCell}>Storage</th>
                   <th style={styles.tableHeadCell}>Added</th>
                   <th style={styles.tableHeadCell}>Expires</th>
@@ -1067,45 +1095,39 @@ export default function Fridge() {
                         </div>
                       </td>
                       <td
-                        style={styles.tableCell}
+                        style={{ ...styles.tableCell, ...styles.quantityCell }}
                         onMouseEnter={() => setHoveredItemId(item.id)}
                         onMouseLeave={() => setHoveredItemId(null)}
                       >
-                        {hoveredItemId === item.id ? (
-                          <div style={styles.quantityContainer}>
-                            <button
-                              style={styles.stepperButton}
-                              onClick={() =>
-                                handleUpdateQuantity(
-                                  item.id,
-                                  item.quantity - 1
-                                )
-                              }
-                              title="Decrease quantity"
-                            >
-                              −
-                            </button>
-                            <span style={styles.quantityText}>
-                              {item.quantity} {unit ? unit.toLowerCase() : ""}
-                            </span>
-                            <button
-                              style={styles.stepperButton}
-                              onClick={() =>
-                                handleUpdateQuantity(
-                                  item.id,
-                                  item.quantity + 1
-                                )
-                              }
-                              title="Increase quantity"
-                            >
-                              +
-                            </button>
-                          </div>
-                        ) : (
-                          <>
+                        <div style={styles.quantityContainer}>
+                          <button
+                            style={styles.stepperButton(hoveredItemId === item.id)}
+                            onClick={() =>
+                              handleUpdateQuantity(
+                                item.id,
+                                item.quantity - 1
+                              )
+                            }
+                            title="Decrease quantity"
+                          >
+                            −
+                          </button>
+                          <span style={styles.quantityText}>
                             {item.quantity} {unit ? unit.toLowerCase() : ""}
-                          </>
-                        )}
+                          </span>
+                          <button
+                            style={styles.stepperButton(hoveredItemId === item.id)}
+                            onClick={() =>
+                              handleUpdateQuantity(
+                                item.id,
+                                item.quantity + 1
+                              )
+                            }
+                            title="Increase quantity"
+                          >
+                            +
+                          </button>
+                        </div>
                       </td>
                       <td style={styles.tableCell}>
                         {storage || (
