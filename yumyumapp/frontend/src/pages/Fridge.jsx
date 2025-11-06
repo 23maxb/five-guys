@@ -11,6 +11,7 @@ import {
 
 const LOCAL_STORAGE_KEY = "yumyumapp.fridge.itemMeta";
 const STORAGE_OPTIONS = ["All", "Fridge", "Freezer", "Pantry"];
+const AUTO_SEED_STORAGE_KEY = "yumyumapp.fridge.autoSeeded";
 
 const SAMPLE_ITEMS = [
   {
@@ -452,6 +453,15 @@ function loadMetadata() {
   }
 }
 
+function loadAutoSeedAttempted() {
+  try {
+    return localStorage.getItem(AUTO_SEED_STORAGE_KEY) === "1";
+  } catch (err) {
+    console.warn("Failed to read fridge auto seed flag:", err);
+    return false;
+  }
+}
+
 function isExpiringWithinWeek(expirationDate) {
   if (!expirationDate) return false;
 
@@ -481,7 +491,9 @@ export default function Fridge() {
   const [sortBy, setSortBy] = useState("name");
   const [selectedIds, setSelectedIds] = useState([]);
   const [seeding, setSeeding] = useState(false);
-  const [autoSeedAttempted, setAutoSeedAttempted] = useState(false);
+  const [autoSeedAttempted, setAutoSeedAttempted] = useState(() =>
+    loadAutoSeedAttempted()
+  );
   const [hoveredItemId, setHoveredItemId] = useState(null);
 
   const [newItem, setNewItem] = useState({
@@ -506,6 +518,21 @@ export default function Fridge() {
     });
   }, []);
 
+  const updateAutoSeedAttempted = useCallback((updater) => {
+    setAutoSeedAttempted((prev) => {
+      const next =
+        typeof updater === "function" ? updater(prev) : Boolean(updater);
+      if (next) {
+        try {
+          localStorage.setItem(AUTO_SEED_STORAGE_KEY, "1");
+        } catch (err) {
+          console.warn("Failed to persist fridge auto seed flag:", err);
+        }
+      }
+      return next;
+    });
+  }, []);
+
   const fetchFridgeContents = useCallback(async () => {
     if (!token) return;
     try {
@@ -514,6 +541,10 @@ export default function Fridge() {
       setStatus(null);
       const fridgeData = await viewFridge(token);
       setFridge(fridgeData);
+      updateAutoSeedAttempted((previous) => {
+        if (previous) return true;
+        return Array.isArray(fridgeData.items) && fridgeData.items.length > 0;
+      });
 
       // Prune metadata that no longer has a matching item
       updateMetadata((prevMeta) => {
@@ -530,7 +561,7 @@ export default function Fridge() {
     } finally {
       setLoading(false);
     }
-  }, [token, updateMetadata]);
+  }, [token, updateMetadata, updateAutoSeedAttempted]);
 
   const handleSeedSampleItems = useCallback(
     async ({ existingItems = [], silent = false } = {}) => {
@@ -573,6 +604,9 @@ export default function Fridge() {
           createdCount === 0
             ? "Sample items are already in your fridge."
             : "Sample ingredients added.";
+        if (createdCount > 0) {
+          updateAutoSeedAttempted(true);
+        }
 
         if (!silent) {
           setStatus(message);
@@ -593,7 +627,7 @@ export default function Fridge() {
         setSeeding(false);
       }
     },
-    [token, seeding, updateMetadata]
+    [token, seeding, updateMetadata, updateAutoSeedAttempted]
   );
 
   useEffect(() => {
@@ -613,7 +647,7 @@ export default function Fridge() {
       return;
     }
 
-    setAutoSeedAttempted(true);
+    updateAutoSeedAttempted(true);
     handleSeedSampleItems({
       existingItems: fridge.items,
       silent: true,
@@ -630,6 +664,7 @@ export default function Fridge() {
     fridge,
     handleSeedSampleItems,
     fetchFridgeContents,
+    updateAutoSeedAttempted,
   ]);
 
   const handleAddItem = async (e) => {
@@ -775,6 +810,7 @@ export default function Fridge() {
     try {
       setError(null);
       setStatus(null);
+      updateAutoSeedAttempted(true);
       await clearFridge(token);
       updateMetadata({});
       setSelectedIds([]);
