@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { login as apiLogin } from '../lib/api'
 
@@ -25,6 +25,7 @@ const styles = {
     },
     headingRow: {
         display: 'flex',
+        justifyContent: 'center',
         alignItems: 'center',
         gap: 12,
         fontSize: 24,
@@ -77,6 +78,18 @@ const styles = {
         color: isError ? '#b91c1c' : '#15803d',
         marginTop: 4,
     }),
+    footer: {
+        textAlign: 'center',
+        fontSize: 14,
+        color: '#475569',
+        marginTop: 4,
+    },
+    link: {
+        color: '#1d4ed8',
+        fontWeight: 600,
+        textDecoration: 'none',
+        marginLeft: 4,
+    },
 }
 
 export default function LoginPage() {
@@ -114,7 +127,6 @@ export default function LoginPage() {
         <div style={styles.page}>
             <form onSubmit={onSubmit} style={styles.card}>
                 <div style={styles.headingRow}>
-                    <span style={styles.arrow}>→</span>
                     <span>Welcome to YumYumApp</span>
                 </div>
                 <p style={styles.subtext}>Log in with your YumYumApp account to continue.</p>
@@ -146,6 +158,13 @@ export default function LoginPage() {
                         style={styles.input(focusedField === 'password')}
                     />
                 </label>
+
+                <div style={styles.footer}>
+                    Don't have an account?
+                    <Link to="/register" style={styles.link}>
+                        Create one
+                    </Link>
+                </div>
 
                 {error && <div style={styles.statusMessage(true)}>{error}</div>}
                 {success && !error && <div style={styles.statusMessage(false)}>{success}</div>}
