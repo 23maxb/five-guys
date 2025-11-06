@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import Navbar from "../components/Navbar";
 import {
   viewFridge,
   addFridgeItem,
@@ -457,6 +458,71 @@ export default function Fridge() {
     }
   }, [token, updateMetadata]);
 
+  const handleSeedSampleItems = useCallback(
+    async ({ existingItems = [], silent = false } = {}) => {
+      if (!token || seeding)
+        return { success: false, createdCount: 0, message: null };
+
+      try {
+        if (!silent) {
+          setError(null);
+          setStatus(null);
+        }
+        setSeeding(true);
+
+        const existingNames = new Set(
+          existingItems.map((item) => item.name.toLowerCase())
+        );
+
+        let createdCount = 0;
+        for (const sample of SAMPLE_ITEMS) {
+          if (existingNames.has(sample.name.toLowerCase())) {
+            continue;
+          }
+          const created = await addFridgeItem(token, {
+            name: sample.name,
+            quantity: sample.quantity,
+          });
+          existingNames.add(sample.name.toLowerCase());
+          createdCount += 1;
+          updateMetadata((prev) => ({
+            ...prev,
+            [created.id]: {
+              unit: sample.unit,
+              storage: sample.storage,
+              addedOn: sample.addedOn,
+              expiresOn: sample.expiresOn,
+            },
+          }));
+        }
+
+        const message =
+          createdCount === 0
+            ? "Sample items are already in your fridge."
+            : "Sample ingredients added.";
+
+        if (!silent) {
+          setStatus(message);
+        }
+
+        return { success: true, createdCount, message };
+      } catch (err) {
+        const message = err?.message || "Failed to add sample items.";
+        if (silent) {
+          setError(
+            'Could not auto add sample data. Use "Add Sample Items" after connecting to the server.'
+          );
+        } else {
+          setError(message);
+        }
+        return { success: false, createdCount: 0, message: null };
+      } finally {
+        setSeeding(false);
+      }
+    },
+    [token, seeding, updateMetadata]
+  );
+
   useEffect(() => {
     fetchFridgeContents();
   }, [fetchFridgeContents]);
@@ -579,71 +645,6 @@ export default function Fridge() {
     }
   };
 
-  const handleSeedSampleItems = useCallback(
-    async ({ existingItems = [], silent = false } = {}) => {
-      if (!token || seeding)
-        return { success: false, createdCount: 0, message: null };
-
-      try {
-        if (!silent) {
-          setError(null);
-          setStatus(null);
-        }
-        setSeeding(true);
-
-        const existingNames = new Set(
-          existingItems.map((item) => item.name.toLowerCase())
-        );
-
-        let createdCount = 0;
-        for (const sample of SAMPLE_ITEMS) {
-          if (existingNames.has(sample.name.toLowerCase())) {
-            continue;
-          }
-          const created = await addFridgeItem(token, {
-            name: sample.name,
-            quantity: sample.quantity,
-          });
-          existingNames.add(sample.name.toLowerCase());
-          createdCount += 1;
-          updateMetadata((prev) => ({
-            ...prev,
-            [created.id]: {
-              unit: sample.unit,
-              storage: sample.storage,
-              addedOn: sample.addedOn,
-              expiresOn: sample.expiresOn,
-            },
-          }));
-        }
-
-        const message =
-          createdCount === 0
-            ? "Sample items are already in your fridge."
-            : "Sample ingredients added.";
-
-        if (!silent) {
-          setStatus(message);
-        }
-
-        return { success: true, createdCount, message };
-      } catch (err) {
-        const message = err?.message || "Failed to add sample items.";
-        if (silent) {
-          setError(
-            "Could not auto add sample data. Use “Add Sample Items” after connecting to the server."
-          );
-        } else {
-          setError(message);
-        }
-        return { success: false, createdCount: 0, message: null };
-      } finally {
-        setSeeding(false);
-      }
-    },
-    [token, seeding, updateMetadata]
-  );
-
   const handleClearFridge = async () => {
     if (!window.confirm("Clear all items from your fridge?")) return;
     try {
@@ -730,13 +731,15 @@ export default function Fridge() {
     filteredItems.length > 0 && selectedIds.length === filteredItems.length;
 
   return (
-    <div style={styles.page}>
-      <div style={styles.content}>
-        <nav style={styles.nav}>
-          <Link to="/home">← Back to Home</Link>
-          <span>•</span>
-          <Link to="/calender">Meal Planner</Link>
-        </nav>
+    <>
+      <Navbar />
+      <div style={styles.page}>
+        <div style={styles.content}>
+          <nav style={styles.nav}>
+            <Link to="/home">← Back to Home</Link>
+            <span>•</span>
+            <Link to="/calender">Meal Planner</Link>
+          </nav>
 
         <div style={styles.headerRow}>
           <div style={styles.headerTitle}>
@@ -1031,7 +1034,8 @@ export default function Fridge() {
             </table>
           )}
         </section>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
