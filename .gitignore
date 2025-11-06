@@ -5,3 +5,6 @@ dist/
 .venv/
 .gitignore
 yumyumapp/node_modules
+copilot-instructions.md
+db.sqlite3
+yumyumapp/db.sqlite3

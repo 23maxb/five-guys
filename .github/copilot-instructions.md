@@ -104,8 +104,11 @@ Install: `cd frontend && npm install`
 **Spoonacular** (`https://api.spoonacular.com/recipes/findByIngredients`)
 
 - Used for recipe discovery based on fridge ingredients
-- API key in `api/views.py`
+- API key in `api/views.py` line 225
 - Returns recipes ranked by ingredient match
+- **Free tier limit**: 150 requests/day (resets at midnight UTC)
+- **402 Payment Required error**: Indicates daily quota exceeded - get new API key from https://spoonacular.com/food-api or wait until quota resets
+- Backend returns 503 Service Unavailable with helpful message when quota exceeded
 
 ## Common Pitfalls
 
@@ -120,6 +123,8 @@ Install: `cd frontend && npm install`
 5. **Metadata cleanup**: When removing fridge items, frontend must update `localStorage` metadata to prevent orphaned entries. See `handleRemoveItem` and `updateMetadata` pattern in `Fridge.jsx`.
 
 6. **Unique constraints**: Both `Fridge` and `FridgeItem` have `unique_together` constraints. Attempting to create duplicates returns 400 errors - handle gracefully.
+
+7. **Spoonacular API quota**: Free tier is limited to 150 requests/day. If you get 402 errors, either wait for quota reset (midnight UTC) or sign up for a new free API key and update it in `api/views.py`.
 
 ## File Organization Notes
 
