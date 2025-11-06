@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import Navbar from "../components/Navbar";
 import {
   viewFridge,
   addFridgeItem,
+  updateFridgeItemQuantity,
   removeFridgeItem,
   clearFridge,
 } from "../lib/api_fridge";
@@ -379,6 +381,42 @@ const styles = {
     fontWeight: 600,
     cursor: "pointer",
   },
+  quantityCell: {
+    minWidth: 120,
+    textAlign: "center",
+  },
+  quantityContainer: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  stepperButton: (isVisible) => ({
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    border: "1px solid #cbd5f5",
+    background: "#fff",
+    color: "#475569",
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    lineHeight: 1,
+    padding: 0,
+    transition: "all 0.15s ease",
+    flexShrink: 0,
+    opacity: isVisible ? 1 : 0,
+    pointerEvents: isVisible ? "auto" : "none",
+  }),
+  quantityText: {
+    display: "inline-block",
+    minWidth: 50,
+    whiteSpace: "nowrap",
+    textAlign: "center",
+  },
 };
 
 function loadMetadata() {
@@ -389,6 +427,21 @@ function loadMetadata() {
     console.warn("Failed to parse fridge metadata from storage:", err);
     return {};
   }
+}
+
+function isExpiringWithinWeek(expirationDate) {
+  if (!expirationDate) return false;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const expDate = new Date(expirationDate);
+  expDate.setHours(0, 0, 0, 0);
+
+  const oneWeekFromNow = new Date(today);
+  oneWeekFromNow.setDate(today.getDate() + 7);
+
+  return expDate <= oneWeekFromNow;
 }
 
 export default function Fridge() {
@@ -407,6 +460,7 @@ export default function Fridge() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [seeding, setSeeding] = useState(false);
   const [autoSeedAttempted, setAutoSeedAttempted] = useState(false);
+  const [hoveredItemId, setHoveredItemId] = useState(null);
 
   const [newItem, setNewItem] = useState({
     name: "",
@@ -456,6 +510,71 @@ export default function Fridge() {
       setLoading(false);
     }
   }, [token, updateMetadata]);
+
+  const handleSeedSampleItems = useCallback(
+    async ({ existingItems = [], silent = false } = {}) => {
+      if (!token || seeding)
+        return { success: false, createdCount: 0, message: null };
+
+      try {
+        if (!silent) {
+          setError(null);
+          setStatus(null);
+        }
+        setSeeding(true);
+
+        const existingNames = new Set(
+          existingItems.map((item) => item.name.toLowerCase())
+        );
+
+        let createdCount = 0;
+        for (const sample of SAMPLE_ITEMS) {
+          if (existingNames.has(sample.name.toLowerCase())) {
+            continue;
+          }
+          const created = await addFridgeItem(token, {
+            name: sample.name,
+            quantity: sample.quantity,
+          });
+          existingNames.add(sample.name.toLowerCase());
+          createdCount += 1;
+          updateMetadata((prev) => ({
+            ...prev,
+            [created.id]: {
+              unit: sample.unit,
+              storage: sample.storage,
+              addedOn: sample.addedOn,
+              expiresOn: sample.expiresOn,
+            },
+          }));
+        }
+
+        const message =
+          createdCount === 0
+            ? "Sample items are already in your fridge."
+            : "Sample ingredients added.";
+
+        if (!silent) {
+          setStatus(message);
+        }
+
+        return { success: true, createdCount, message };
+      } catch (err) {
+        const message = err?.message || "Failed to add sample items.";
+        if (silent) {
+          setError(
+            'Could not auto add sample data. Use "Add Sample Items" after connecting to the server.'
+          );
+        } else {
+          setError(message);
+        }
+        return { success: false, createdCount: 0, message: null };
+      } finally {
+        setSeeding(false);
+      }
+    },
+    [token, seeding, updateMetadata]
+  );
 
   useEffect(() => {
     fetchFridgeContents();
@@ -537,6 +656,49 @@ export default function Fridge() {
     }
   };
 
+  const handleUpdateQuantity = async (itemId, newQuantity) => {
+    try {
+      setError(null);
+      setStatus(null);
+
+      // Optimistic update - update local state immediately
+      setFridge((prevFridge) => {
+        if (!prevFridge) return prevFridge;
+
+        if (newQuantity <= 0) {
+          // Remove item if quantity is 0
+          return {
+            ...prevFridge,
+            items: prevFridge.items.filter((item) => item.id !== itemId),
+          };
+        }
+
+        return {
+          ...prevFridge,
+          items: prevFridge.items.map((item) =>
+            item.id === itemId ? { ...item, quantity: newQuantity } : item
+          ),
+        };
+      });
+
+      const result = await updateFridgeItemQuantity(token, itemId, newQuantity);
+
+      if (result === null) {
+        // Item was removed due to quantity reaching 0
+        updateMetadata((prev) => {
+          const next = { ...prev };
+          delete next[itemId];
+          return next;
+        });
+        setSelectedIds((prev) => prev.filter((id) => id !== itemId));
+      }
+    } catch (err) {
+      setError(err.message || "Failed to update quantity.");
+      // Revert on error
+      await fetchFridgeContents();
+    }
+  };
+
   const handleRemoveItem = async (itemId) => {
     try {
       setError(null);
@@ -578,71 +740,6 @@ export default function Fridge() {
       setError(err.message || "Failed to remove selected items.");
     }
   };
-
-  const handleSeedSampleItems = useCallback(
-    async ({ existingItems = [], silent = false } = {}) => {
-      if (!token || seeding)
-        return { success: false, createdCount: 0, message: null };
-
-      try {
-        if (!silent) {
-          setError(null);
-          setStatus(null);
-        }
-        setSeeding(true);
-
-        const existingNames = new Set(
-          existingItems.map((item) => item.name.toLowerCase())
-        );
-
-        let createdCount = 0;
-        for (const sample of SAMPLE_ITEMS) {
-          if (existingNames.has(sample.name.toLowerCase())) {
-            continue;
-          }
-          const created = await addFridgeItem(token, {
-            name: sample.name,
-            quantity: sample.quantity,
-          });
-          existingNames.add(sample.name.toLowerCase());
-          createdCount += 1;
-          updateMetadata((prev) => ({
-            ...prev,
-            [created.id]: {
-              unit: sample.unit,
-              storage: sample.storage,
-              addedOn: sample.addedOn,
-              expiresOn: sample.expiresOn,
-            },
-          }));
-        }
-
-        const message =
-          createdCount === 0
-            ? "Sample items are already in your fridge."
-            : "Sample ingredients added.";
-
-        if (!silent) {
-          setStatus(message);
-        }
-
-        return { success: true, createdCount, message };
-      } catch (err) {
-        const message = err?.message || "Failed to add sample items.";
-        if (silent) {
-          setError(
-            "Could not auto add sample data. Use “Add Sample Items” after connecting to the server."
-          );
-        } else {
-          setError(message);
-        }
-        return { success: false, createdCount: 0, message: null };
-      } finally {
-        setSeeding(false);
-      }
-    },
-    [token, seeding, updateMetadata]
-  );
 
   const handleClearFridge = async () => {
     if (!window.confirm("Clear all items from your fridge?")) return;
@@ -730,13 +827,15 @@ export default function Fridge() {
     filteredItems.length > 0 && selectedIds.length === filteredItems.length;
 
   return (
-    <div style={styles.page}>
-      <div style={styles.content}>
-        <nav style={styles.nav}>
-          <Link to="/home">← Back to Home</Link>
-          <span>•</span>
-          <Link to="/calender">Meal Planner</Link>
-        </nav>
+    <>
+      <Navbar />
+      <div style={styles.page}>
+        <div style={styles.content}>
+          <nav style={styles.nav}>
+            <Link to="/home">← Back to Home</Link>
+            <span>•</span>
+            <Link to="/calender">Meal Planner</Link>
+          </nav>
 
         <div style={styles.headerRow}>
           <div style={styles.headerTitle}>
@@ -965,7 +1064,9 @@ export default function Fridge() {
                     />
                   </th>
                   <th style={styles.tableHeadCell}>Item</th>
-                  <th style={styles.tableHeadCell}>Quantity</th>
+                  <th style={{ ...styles.tableHeadCell, textAlign: "center" }}>
+                    Quantity
+                  </th>
                   <th style={styles.tableHeadCell}>Storage</th>
                   <th style={styles.tableHeadCell}>Added</th>
                   <th style={styles.tableHeadCell}>Expires</th>
@@ -993,8 +1094,40 @@ export default function Fridge() {
                           <span style={styles.itemName}>{item.name}</span>
                         </div>
                       </td>
-                      <td style={styles.tableCell}>
-                        {item.quantity} {unit ? unit.toLowerCase() : ""}
+                      <td
+                        style={{ ...styles.tableCell, ...styles.quantityCell }}
+                        onMouseEnter={() => setHoveredItemId(item.id)}
+                        onMouseLeave={() => setHoveredItemId(null)}
+                      >
+                        <div style={styles.quantityContainer}>
+                          <button
+                            style={styles.stepperButton(hoveredItemId === item.id)}
+                            onClick={() =>
+                              handleUpdateQuantity(
+                                item.id,
+                                item.quantity - 1
+                              )
+                            }
+                            title="Decrease quantity"
+                          >
+                            −
+                          </button>
+                          <span style={styles.quantityText}>
+                            {item.quantity} {unit ? unit.toLowerCase() : ""}
+                          </span>
+                          <button
+                            style={styles.stepperButton(hoveredItemId === item.id)}
+                            onClick={() =>
+                              handleUpdateQuantity(
+                                item.id,
+                                item.quantity + 1
+                              )
+                            }
+                            title="Increase quantity"
+                          >
+                            +
+                          </button>
+                        </div>
                       </td>
                       <td style={styles.tableCell}>
                         {storage || (
@@ -1010,7 +1143,18 @@ export default function Fridge() {
                       </td>
                       <td style={styles.tableCell}>
                         {expiresOn ? (
-                          expiresOn
+                          <span
+                            style={{
+                              color: isExpiringWithinWeek(expiresOn)
+                                ? "#ef4444"
+                                : "#0f172a",
+                              fontWeight: isExpiringWithinWeek(expiresOn)
+                                ? 600
+                                : "normal",
+                            }}
+                          >
+                            {expiresOn}
+                          </span>
                         ) : (
                           <span style={styles.muted}>—</span>
                         )}
@@ -1031,7 +1175,8 @@ export default function Fridge() {
             </table>
           )}
         </section>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -162,6 +162,33 @@ def add_fridge_item(request):
     return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
+@api_view(['PATCH'])
+def update_fridge_item_quantity(request, item_id):
+    """
+    Update the quantity of a fridge item.
+    """
+    try:
+        item = FridgeItem.objects.get(id=item_id, fridge__user=request.user)
+        quantity = request.data.get('quantity')
+
+        if quantity is None:
+            return Response({'error': 'Quantity is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        quantity = int(quantity)
+
+        if quantity <= 0:
+            item.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        item.quantity = quantity
+        item.save()
+
+        serializer = FridgeItemSerializer(item)
+        return Response(serializer.data)
+    except FridgeItem.DoesNotExist:
+        return Response({'error': 'Item not found in your fridge.'}, status=status.HTTP_404_NOT_FOUND)
+
+
 @api_view(['DELETE'])
 def remove_fridge_item(request, item_id):
     """
