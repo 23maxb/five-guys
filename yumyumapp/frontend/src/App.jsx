@@ -7,6 +7,7 @@ import Fridge from "./pages/Fridge";
 import Register from "./pages/Register";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import Recipes from "./pages/Recipes";
+import RecipeInspect from "./pages/recipe_inspect";
 
 export default function App() {
     return (
@@ -31,6 +32,11 @@ export default function App() {
             <Route path="/recipes" element={
                 <ProtectedRoute>
                     <Recipes/>
+                </ProtectedRoute>
+            }/>
+            <Route path="/recipes/:recipeId" element={
+                <ProtectedRoute>
+                    <RecipeInspect/>
                 </ProtectedRoute>
             }/>
             <Route path="/register" element={

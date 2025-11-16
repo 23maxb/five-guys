@@ -8,6 +8,7 @@ from django.contrib.auth.models import User
 import requests
 from .models import Fridge, FridgeItem
 from .serializers import FridgeSerializer, FridgeItemSerializer
+from .const import SPOONACULAR_API_KEY
 
 
 @api_view(['POST'])
@@ -222,7 +223,6 @@ def find_recipes_by_ingredients(request):
     Finds recipes based on the ingredients in the user's fridge
     by calling the Spoonacular API.
     """
-    SPOONACULAR_API_KEY = '760dae2f56cd42d7b7ffc86d6a78a5a6'
 
     try:
         fridge = Fridge.objects.get(user=request.user, name='Main Fridge')
@@ -250,3 +250,44 @@ def find_recipes_by_ingredients(request):
         return Response(response.json())
     else:
         return Response({'error': 'Failed to fetch recipes from Spoonacular.'}, status=response.status_code)
+
+
+@api_view(['GET'])
+def get_analyzed_recipe_instructions(request, recipe_id):
+    """
+    Get an analyzed breakdown of a recipe's instructions.
+    """
+    params = {
+        'stepBreakdown': True,
+        'apiKey': SPOONACULAR_API_KEY
+    }
+    response = requests.get(f'https://api.spoonacular.com/recipes/{recipe_id}/analyzedInstructions', params=params)
+    if response.status_code == 200:
+        return Response(response.json())
+    else:
+        return Response({'error': 'Failed to fetch recipe instructions from Spoonacular.'}, status=response.status_code)
+
+
+@api_view(['GET'])
+def get_recipe_information(request, recipe_id):
+    """
+    Get full information about a recipe.
+    """
+    include_nutrition = request.query_params.get('includeNutrition', 'false').lower() == 'true'
+    add_wine_pairing = request.query_params.get('addWinePairing', 'false').lower() == 'true'
+    add_taste_data = request.query_params.get('addTasteData', 'false').lower() == 'true'
+
+    params = {
+        'includeNutrition': include_nutrition,
+        'addWinePairing': add_wine_pairing,
+        'addTasteData': add_taste_data,
+        'apiKey': SPOONACULAR_API_KEY
+    }
+
+    response = requests.get(f'https://api.spoonacular.com/recipes/{recipe_id}/information', params=params)
+
+    print(response.json())
+    if response.status_code == 200:
+        return Response(response.json())
+    else:
+        return Response({'error': 'Failed to fetch recipe information from Spoonacular.'}, status=response.status_code)
