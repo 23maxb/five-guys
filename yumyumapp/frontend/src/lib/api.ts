@@ -83,3 +83,31 @@ export async function logout(token: string): Promise<void> {
     },
   });
 }
+
+// Share calendar as PDF via email
+export interface ShareCalendarRequest {
+  email: string;
+  mealPlan: Record<string, Record<string, any>>;
+  weekRange: string;
+}
+
+export async function shareCalendarPDF(
+  token: string,
+  data: ShareCalendarRequest
+): Promise<{ message: string }> {
+  const response = await fetch(`${API_BASE_URL}/calendar/share-pdf/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Token ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to share calendar');
+  }
+
+  return await response.json();
+}

@@ -14,4 +14,5 @@ urlpatterns = [path('login/', views.login_view, name='login'), path('register/',
                path('recipes/<int:recipe_id>/analyzedInstructions/', views.get_analyzed_recipe_instructions,
                     name='get_analyzed_recipe_instructions'),
                path('recipes/<int:recipe_id>/information/', views.get_recipe_information,
-                    name='get_recipe_information')]
+                    name='get_recipe_information'),
+               path('calendar/share-pdf/', views.share_calendar_pdf, name='share_calendar_pdf')]

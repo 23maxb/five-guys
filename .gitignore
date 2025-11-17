@@ -8,3 +8,5 @@ yumyumapp/node_modules
 copilot-instructions.md
 db.sqlite3
 yumyumapp/db.sqlite3
+__pycache__/
+*.pyc

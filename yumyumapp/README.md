@@ -55,20 +55,38 @@ cd frontend && npm run dev
 
 ### Backend (Django)
 
-1. Install Python dependencies:
+1. **Set up environment variables:**
+   ```bash
+   # Copy the example environment file
+   cp .env.example .env
+   
+   # Edit .env and add your actual API keys and secrets
+   # The .env file is already in .gitignore and won't be committed
+   ```
+
+2. Install Python dependencies:
    ```bash
    pip install -r requirements.txt
    ```
 
-2. Run database migrations:
+3. Run database migrations:
    ```bash
    python manage.py migrate
    ```
 
-3. Create a superuser (optional):
+4. Create a superuser (optional):
    ```bash
    python manage.py createsuperuser
    ```
+
+### Environment Variables
+
+The application uses environment variables for sensitive configuration. See `.env.example` for all required variables:
+
+- `DJANGO_SECRET_KEY` - Django secret key (generate a new one for production!)
+- `DEBUG` - Debug mode (True for development, False for production)
+- `ALLOWED_HOSTS` - Comma-separated list of allowed hosts
+- `SPOONACULAR_API_KEY` - Spoonacular API key (get from https://spoonacular.com/food-api)
 
 ### Frontend (React)
 

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../auth/AuthContext";
 import { findRecipesByIngredients } from "../lib/api_recipe.ts";
+import { shareCalendarPDF } from "../lib/api";
 
 const LOCAL_STORAGE_KEY = "yumyumapp.calendar.mealPlan";
 const MEAL_SLOTS = ["Breakfast", "Lunch", "Dinner"];
@@ -313,6 +314,94 @@ const styles = {
     fontWeight: 600,
     cursor: "pointer",
   },
+  shareButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    border: "none",
+    background: "#3b82f6",
+    color: "#fff",
+    borderRadius: 10,
+    padding: "10px 18px",
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    boxShadow: "0 4px 12px rgba(59, 130, 246, 0.3)",
+  },
+  modalOverlay: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: "rgba(0, 0, 0, 0.5)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000,
+    padding: 20,
+  },
+  modalContent: {
+    background: "#fff",
+    borderRadius: 20,
+    padding: 32,
+    maxWidth: 480,
+    width: "100%",
+    boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 700,
+    marginBottom: 8,
+    color: "#0f172a",
+  },
+  modalSubtext: {
+    fontSize: 14,
+    color: "#6b7280",
+    marginBottom: 24,
+  },
+  modalInput: {
+    width: "100%",
+    padding: "12px 16px",
+    borderRadius: 12,
+    border: "1px solid #e5e7eb",
+    fontSize: 14,
+    marginBottom: 20,
+    boxSizing: "border-box",
+  },
+  modalButtons: {
+    display: "flex",
+    gap: 12,
+    justifyContent: "flex-end",
+  },
+  modalButton: (isPrimary) => ({
+    border: "none",
+    borderRadius: 10,
+    padding: "10px 20px",
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    background: isPrimary ? "#3b82f6" : "#f3f4f6",
+    color: isPrimary ? "#fff" : "#374151",
+  }),
+  successMessage: {
+    padding: "12px 16px",
+    background: "#ecfdf5",
+    border: "1px solid #10b981",
+    borderRadius: 12,
+    color: "#065f46",
+    fontSize: 14,
+    marginBottom: 20,
+  },
+  errorMessage: {
+    padding: "12px 16px",
+    background: "#fee2e2",
+    border: "1px solid #dc2626",
+    borderRadius: 12,
+    color: "#991b1b",
+    fontSize: 14,
+    marginBottom: 20,
+  },
   selectedRecipeCard: {
     borderRadius: 16,
     border: "1px solid #e5e7eb",
@@ -382,6 +471,10 @@ export default function Calendar() {
   const [currentWeekStart, setCurrentWeekStart] = useState(() =>
     getStartOfWeek(new Date())
   );
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareEmail, setShareEmail] = useState("");
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareMessage, setShareMessage] = useState({ type: "", text: "" });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -531,6 +624,47 @@ export default function Calendar() {
 
   const handleResetPlan = () => setMealPlan({});
 
+  const handleShareCalendar = async () => {
+    if (!shareEmail.trim()) {
+      setShareMessage({ type: "error", text: "Please enter an email address" });
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(shareEmail)) {
+      setShareMessage({ type: "error", text: "Please enter a valid email address" });
+      return;
+    }
+
+    if (!hasAnyPlan) {
+      setShareMessage({ type: "error", text: "Please add some meals to your plan before sharing" });
+      return;
+    }
+
+    try {
+      setShareLoading(true);
+      setShareMessage({ type: "", text: "" });
+      
+      await shareCalendarPDF(token, {
+        email: shareEmail,
+        mealPlan: mealPlan,
+        weekRange: weekRangeLabel,
+      });
+
+      setShareMessage({ type: "success", text: `Meal plan sent to ${shareEmail} successfully!` });
+      setTimeout(() => {
+        setShowShareModal(false);
+        setShareEmail("");
+        setShareMessage({ type: "", text: "" });
+      }, 2000);
+    } catch (error) {
+      setShareMessage({ type: "error", text: error.message || "Failed to share calendar" });
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
   return (
     <div style={styles.page}>
       <Navbar />
@@ -565,7 +699,14 @@ export default function Calendar() {
       </header>
 
       <main style={styles.content}>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+          <button
+            style={styles.shareButton}
+            onClick={() => setShowShareModal(true)}
+            disabled={!hasAnyPlan}
+          >
+            📧 Share Calendar
+          </button>
           <button
             style={{
               ...styles.weekButton,
@@ -757,6 +898,65 @@ export default function Calendar() {
           </div>
         </section>
       </main>
+
+      {/* Share Modal */}
+      {showShareModal && (
+        <div style={styles.modalOverlay} onClick={() => !shareLoading && setShowShareModal(false)}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 style={styles.modalTitle}>Share Meal Plan</h2>
+            <p style={styles.modalSubtext}>
+              Enter an email address to send your meal plan calendar as a PDF.
+            </p>
+
+            {shareMessage.text && (
+              <div
+                style={
+                  shareMessage.type === "success"
+                    ? styles.successMessage
+                    : styles.errorMessage
+                }
+              >
+                {shareMessage.text}
+              </div>
+            )}
+
+            <input
+              type="email"
+              placeholder="recipient@example.com"
+              value={shareEmail}
+              onChange={(e) => setShareEmail(e.target.value)}
+              style={styles.modalInput}
+              disabled={shareLoading}
+              onKeyPress={(e) => {
+                if (e.key === "Enter" && !shareLoading) {
+                  handleShareCalendar();
+                }
+              }}
+            />
+
+            <div style={styles.modalButtons}>
+              <button
+                style={styles.modalButton(false)}
+                onClick={() => {
+                  setShowShareModal(false);
+                  setShareEmail("");
+                  setShareMessage({ type: "", text: "" });
+                }}
+                disabled={shareLoading}
+              >
+                Cancel
+              </button>
+              <button
+                style={styles.modalButton(true)}
+                onClick={handleShareCalendar}
+                disabled={shareLoading || !shareEmail.trim()}
+              >
+                {shareLoading ? "Sending..." : "Send PDF"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

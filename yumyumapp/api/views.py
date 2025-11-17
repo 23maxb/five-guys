@@ -5,7 +5,16 @@ from rest_framework.response import Response
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
 from django.contrib.auth.models import User
+from django.core.mail import EmailMessage
+from django.conf import settings
 import requests
+from io import BytesIO
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from datetime import datetime
 from .models import Fridge, FridgeItem
 from .serializers import FridgeSerializer, FridgeItemSerializer
 from .const import SPOONACULAR_API_KEY
@@ -291,3 +300,149 @@ def get_recipe_information(request, recipe_id):
         return Response(response.json())
     else:
         return Response({'error': 'Failed to fetch recipe information from Spoonacular.'}, status=response.status_code)
+
+
+@api_view(['POST'])
+def share_calendar_pdf(request):
+    """
+    Generate a PDF of the meal plan calendar and send it via email.
+    Expects {'email': 'recipient@example.com', 'mealPlan': {...}, 'weekRange': 'Jan 1 – Jan 7'} in request body.
+    """
+    recipient_email = request.data.get('email')
+    meal_plan = request.data.get('mealPlan', {})
+    week_range = request.data.get('weekRange', '')
+
+    if not recipient_email:
+        return Response(
+            {'error': 'Email address is required.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not meal_plan:
+        return Response(
+            {'error': 'Meal plan data is required.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        # Create PDF in memory
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter)
+        elements = []
+
+        # Define styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            textColor=colors.HexColor('#10b981'),
+            spaceAfter=30,
+            alignment=1,  # Center alignment
+        )
+        heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=styles['Heading2'],
+            fontSize=16,
+            textColor=colors.HexColor('#0f172a'),
+            spaceAfter=12,
+        )
+        normal_style = styles['Normal']
+
+        # Title
+        elements.append(Paragraph("Meal Plan Calendar", title_style))
+        if week_range:
+            elements.append(Paragraph(f"Week of {week_range}", normal_style))
+        elements.append(Paragraph(f"Shared by {request.user.first_name or request.user.username}", normal_style))
+        elements.append(Spacer(1, 0.3 * inch))
+
+        # Process meal plan data
+        meal_slots = ["Breakfast", "Lunch", "Dinner"]
+        
+        # Sort days chronologically
+        sorted_days = sorted(meal_plan.items())
+        
+        for day_key, day_plan in sorted_days:
+            # Parse date from day_key (format: YYYY-MM-DD)
+            try:
+                date_obj = datetime.strptime(day_key, '%Y-%m-%d')
+                day_name = date_obj.strftime('%A')
+                date_str = date_obj.strftime('%B %d, %Y')
+            except:
+                day_name = day_key
+                date_str = day_key
+
+            # Day header
+            elements.append(Paragraph(f"<b>{day_name}</b> - {date_str}", heading_style))
+            
+            # Create table for meals
+            meal_data = [['Meal', 'Recipe', 'Time', 'Servings']]
+            
+            for slot in meal_slots:
+                if slot in day_plan:
+                    recipe = day_plan[slot]
+                    meal_data.append([
+                        slot,
+                        recipe.get('title', 'N/A'),
+                        f"{recipe.get('readyInMinutes', 'N/A')} min" if recipe.get('readyInMinutes') else 'N/A',
+                        str(recipe.get('servings', 'N/A'))
+                    ])
+                else:
+                    meal_data.append([slot, 'No meal planned', '-', '-'])
+
+            # Create table
+            table = Table(meal_data, colWidths=[1.2*inch, 3*inch, 1*inch, 0.8*inch])
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#10b981')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f9fafb')]),
+            ]))
+            
+            elements.append(table)
+            elements.append(Spacer(1, 0.3 * inch))
+
+        # Build PDF
+        doc.build(elements)
+        buffer.seek(0)
+        pdf_content = buffer.getvalue()
+        buffer.close()
+
+        # Send email with PDF attachment
+        subject = f"Meal Plan Calendar - {week_range or 'Your Meal Plan'}"
+        message = f"""
+Hello!
+
+{request.user.first_name or request.user.username} has shared their meal plan calendar with you.
+
+This PDF contains the meal plan for the week of {week_range or 'the selected period'}.
+
+Enjoy your meals!
+
+Best regards,
+YumYum App
+        """.strip()
+
+        email = EmailMessage(
+            subject=subject,
+            body=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[recipient_email],
+        )
+        email.attach('meal_plan_calendar.pdf', pdf_content, 'application/pdf')
+        email.send()
+
+        return Response({
+            'message': f'Meal plan calendar has been sent to {recipient_email} successfully!'
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to generate and send PDF: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
