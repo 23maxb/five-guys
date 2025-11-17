@@ -1,16 +1,62 @@
-# React + Vite
+# YumYumApp Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite frontend for the YumYumApp food inventory management system.
 
-Currently, two official plugins are available:
+## Quick Start
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### 1. Install Dependencies
+```bash
+npm install
+```
 
-## React Compiler
+### 2. Set Up Environment Variables
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The app uses OpenAI's GPT-4 Vision API for receipt scanning. To enable this feature:
 
-## Expanding the ESLint configuration
+1. **Copy the example environment file:**
+   ```bash
+   cp .env.local.example .env.local
+   ```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+2. **Get your OpenAI API key:**
+   - Go to [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+   - Sign in or create an account
+   - Click "Create new secret key"
+   - Copy the key (starts with `sk-`)
+
+3. **Add your API key to `.env.local`:**
+   ```
+   VITE_OPENAI_API_KEY=sk-your-actual-key-here
+   ```
+
+   > **Important:** Never commit `.env.local` to git! It's already in `.gitignore`.
+
+### 3. Run Development Server
+```bash
+npm run dev
+```
+
+The app will be available at `http://localhost:5173`
+
+## Features
+
+### 📸 Receipt Scanning
+- Upload receipt photos to automatically extract grocery items
+- OpenAI API will take care of the text cleaning (removing brands, expanding abbreviations)
+- Automatic categorizing
+- Automatic expiration date calculation
+- Review and edit items before adding to inventory
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `VITE_OPENAI_API_KEY` | Yes* | OpenAI API key for receipt scanning |
+
+\* Required only if you want to use the receipt scanning feature
+
+## Build for Production
+
+```bash
+npm run build
+```
