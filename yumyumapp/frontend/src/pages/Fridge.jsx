@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback, useMemo} from "react";
+import React, {useState, useEffect, useCallback, useMemo, useRef} from "react";
 import {useAuth} from "../auth/AuthContext";
 import Navbar from "../components/Navbar";
 import {
@@ -8,6 +8,7 @@ import {
     removeFridgeItem,
     clearFridge,
 } from "../lib/api_fridge";
+import {scanReceipt} from "../lib/receiptScanner";
 
 const LOCAL_STORAGE_KEY = "yumyumapp.fridge.itemMeta";
 const STORAGE_OPTIONS = ["All", "Fridge", "Freezer", "Pantry"];
@@ -441,6 +442,148 @@ const styles = {
         whiteSpace: "nowrap",
         textAlign: "center",
     },
+    modalOverlay: {
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: "rgba(0, 0, 0, 0.5)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+        padding: "20px",
+    },
+    modalContent: {
+        background: "#fff",
+        borderRadius: 16,
+        maxWidth: 900,
+        width: "100%",
+        maxHeight: "90vh",
+        overflow: "auto",
+        padding: "32px",
+        boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
+    },
+    modalHeader: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 24,
+        paddingBottom: 16,
+        borderBottom: "2px solid #e5e7eb",
+    },
+    modalTitle: {
+        fontSize: 24,
+        fontWeight: 700,
+        color: "#111827",
+        margin: 0,
+    },
+    closeButton: {
+        background: "transparent",
+        border: "none",
+        fontSize: 28,
+        color: "#6b7280",
+        cursor: "pointer",
+        padding: 0,
+        width: 32,
+        height: 32,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 8,
+        transition: "all 150ms ease",
+    },
+    reviewItemCard: {
+        background: "#f9fafb",
+        borderRadius: 12,
+        padding: "16px",
+        marginBottom: 12,
+        border: "2px solid #e5e7eb",
+        display: "grid",
+        gap: 12,
+        gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+    },
+    reviewInput: {
+        width: "100%",
+        height: 40,
+        borderRadius: 8,
+        border: "1px solid #d1d5db",
+        padding: "0 12px",
+        fontSize: 13,
+        background: "#fff",
+        boxSizing: "border-box",
+    },
+    reviewLabel: {
+        fontSize: 11,
+        fontWeight: 600,
+        color: "#6b7280",
+        marginBottom: 4,
+        display: "block",
+        textTransform: "uppercase",
+        letterSpacing: "0.05em",
+    },
+    modalActions: {
+        display: "flex",
+        gap: 12,
+        justifyContent: "flex-end",
+        marginTop: 24,
+        paddingTop: 24,
+        borderTop: "2px solid #e5e7eb",
+    },
+    scanButton: {
+        height: 44,
+        borderRadius: 12,
+        border: "2px solid #8b5cf6",
+        background: "#fff",
+        padding: "0 20px",
+        fontSize: 14,
+        fontWeight: 600,
+        color: "#8b5cf6",
+        cursor: "pointer",
+        transition: "all 150ms ease",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+    },
+    scanningOverlay: {
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: "rgba(0, 0, 0, 0.7)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 2000,
+        flexDirection: "column",
+        gap: 16,
+    },
+    scanningText: {
+        color: "#fff",
+        fontSize: 18,
+        fontWeight: 600,
+    },
+    spinner: {
+        width: 48,
+        height: 48,
+        border: "4px solid rgba(255, 255, 255, 0.3)",
+        borderTop: "4px solid #fff",
+        borderRadius: "50%",
+        animation: "spin 1s linear infinite",
+    },
+    deleteReviewButton: {
+        background: "transparent",
+        border: "none",
+        color: "#ef4444",
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: "pointer",
+        padding: "4px 8px",
+        borderRadius: 6,
+        transition: "all 150ms ease",
+    },
 };
 
 function loadMetadata() {
@@ -503,6 +646,12 @@ export default function Fridge() {
         addedOn: new Date().toISOString().slice(0, 10),
         expiresOn: "",
     });
+
+    // Receipt scanning states
+    const [scanning, setScanning] = useState(false);
+    const [scannedItems, setScannedItems] = useState([]);
+    const [showReviewModal, setShowReviewModal] = useState(false);
+    const fileInputRef = useRef(null);
 
     const updateMetadata = useCallback((updater) => {
         setMetadata((prev) => {
@@ -834,6 +983,104 @@ export default function Fridge() {
         setSelectedIds(allSelected ? [] : items.map((item) => item.id));
     };
 
+    const handleReceiptUpload = async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            setError('Please upload an image file (JPG, PNG, etc.)');
+            return;
+        }
+
+        // Validate file size (max 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+            setError('Image file is too large. Please use an image smaller than 10MB.');
+            return;
+        }
+
+        try {
+            setError(null);
+            setStatus(null);
+            setScanning(true);
+
+            // Scan the receipt
+            const result = await scanReceipt(file);
+
+            if (result.items.length === 0) {
+                setError('No items found in the receipt. Please try another image.');
+                return;
+            }
+
+            // Show review modal with scanned items
+            setScannedItems(result.items);
+            setShowReviewModal(true);
+        } catch (err) {
+            setError(err.message || 'Failed to scan receipt. Please try again.');
+            console.error('Receipt scanning error:', err);
+        } finally {
+            setScanning(false);
+            // Reset file input
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+    };
+
+    const handleConfirmScannedItems = async () => {
+        if (scannedItems.length === 0) return;
+
+        try {
+            setError(null);
+            setStatus(null);
+            setShowReviewModal(false);
+
+            let addedCount = 0;
+            for (const scannedItem of scannedItems) {
+                try {
+                    const created = await addFridgeItem(token, {
+                        name: scannedItem.name,
+                        quantity: scannedItem.quantity,
+                    });
+
+                    updateMetadata((prev) => ({
+                        ...prev,
+                        [created.id]: {
+                            storage: scannedItem.storage,
+                            addedOn: scannedItem.addedOn,
+                            expiresOn: scannedItem.expiresOn,
+                        },
+                    }));
+
+                    addedCount++;
+                } catch (err) {
+                    console.error(`Failed to add item ${scannedItem.name}:`, err);
+                }
+            }
+
+            setScannedItems([]);
+            setStatus(`Added ${addedCount} item${addedCount !== 1 ? 's' : ''} from receipt.`);
+            await fetchFridgeContents();
+        } catch (err) {
+            setError(err.message || 'Failed to add items from receipt.');
+        }
+    };
+
+    const handleUpdateScannedItem = (index, field, value) => {
+        setScannedItems(prev => {
+            const updated = [...prev];
+            updated[index] = {
+                ...updated[index],
+                [field]: value,
+            };
+            return updated;
+        });
+    };
+
+    const handleDeleteScannedItem = (index) => {
+        setScannedItems(prev => prev.filter((_, i) => i !== index));
+    };
+
     const enhancedItems = useMemo(() => {
         if (!fridge) return [];
         return fridge.items.map((item) => ({
@@ -924,6 +1171,32 @@ export default function Fridge() {
                             </p>
                         </div>
                         <div style={styles.headerActions}>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                onChange={handleReceiptUpload}
+                                style={{ display: 'none' }}
+                            />
+                            <button
+                                type="button"
+                                style={styles.scanButton}
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={scanning}
+                                onMouseEnter={(e) => {
+                                    if (!scanning) {
+                                        e.currentTarget.style.background = "#8b5cf6";
+                                        e.currentTarget.style.color = "#fff";
+                                    }
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = "#fff";
+                                    e.currentTarget.style.color = "#8b5cf6";
+                                }}
+                            >
+                                <span style={{ fontSize: 18 }}>📸</span>
+                                Scan Receipt
+                            </button>
                             <button
                                 type="button"
                                 style={styles.secondaryButton}
@@ -1254,7 +1527,173 @@ export default function Fridge() {
                         )}
                     </section>
                 </div>
+
+                {/* Scanning Overlay */}
+                {scanning && (
+                    <div style={styles.scanningOverlay}>
+                        <div style={styles.spinner}></div>
+                        <div style={styles.scanningText}>Scanning receipt...</div>
+                    </div>
+                )}
+
+                {/* Review Modal */}
+                {showReviewModal && (
+                    <div style={styles.modalOverlay} onClick={() => setShowReviewModal(false)}>
+                        <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                            <div style={styles.modalHeader}>
+                                <h2 style={styles.modalTitle}>Review Scanned Items</h2>
+                                <button
+                                    style={styles.closeButton}
+                                    onClick={() => setShowReviewModal(false)}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = "#f3f4f6";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = "transparent";
+                                    }}
+                                >
+                                    ×
+                                </button>
+                            </div>
+
+                            <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 20 }}>
+                                Review and edit the items below before adding them to your fridge.
+                            </p>
+
+                            <div style={{ marginBottom: 20 }}>
+                                {scannedItems.map((item, index) => (
+                                    <div key={index} style={styles.reviewItemCard}>
+                                        <div>
+                                            <label style={styles.reviewLabel}>Item Name</label>
+                                            <input
+                                                style={styles.reviewInput}
+                                                type="text"
+                                                value={item.name}
+                                                onChange={(e) =>
+                                                    handleUpdateScannedItem(index, 'name', e.target.value)
+                                                }
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={styles.reviewLabel}>Quantity</label>
+                                            <input
+                                                style={styles.reviewInput}
+                                                type="number"
+                                                min="1"
+                                                value={item.quantity}
+                                                onChange={(e) =>
+                                                    handleUpdateScannedItem(index, 'quantity', parseInt(e.target.value) || 1)
+                                                }
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={styles.reviewLabel}>Storage</label>
+                                            <select
+                                                style={styles.reviewInput}
+                                                value={item.storage}
+                                                onChange={(e) =>
+                                                    handleUpdateScannedItem(index, 'storage', e.target.value)
+                                                }
+                                            >
+                                                <option value="Fridge">Fridge</option>
+                                                <option value="Freezer">Freezer</option>
+                                                <option value="Pantry">Pantry</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label style={styles.reviewLabel}>Date Added</label>
+                                            <input
+                                                style={styles.reviewInput}
+                                                type="date"
+                                                value={item.addedOn}
+                                                onChange={(e) =>
+                                                    handleUpdateScannedItem(index, 'addedOn', e.target.value)
+                                                }
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={styles.reviewLabel}>Expires On</label>
+                                            <input
+                                                style={styles.reviewInput}
+                                                type="date"
+                                                value={item.expiresOn}
+                                                onChange={(e) =>
+                                                    handleUpdateScannedItem(index, 'expiresOn', e.target.value)
+                                                }
+                                            />
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                                            <button
+                                                style={styles.deleteReviewButton}
+                                                onClick={() => handleDeleteScannedItem(index)}
+                                                onMouseEnter={(e) => {
+                                                    e.currentTarget.style.background = "#fee2e2";
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    e.currentTarget.style.background = "transparent";
+                                                }}
+                                            >
+                                                Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {scannedItems.length === 0 && (
+                                <div style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>
+                                    All items removed. Close this dialog or upload another receipt.
+                                </div>
+                            )}
+
+                            <div style={styles.modalActions}>
+                                <button
+                                    type="button"
+                                    style={styles.secondaryButton}
+                                    onClick={() => {
+                                        setShowReviewModal(false);
+                                        setScannedItems([]);
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = "#f3f4f6";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = "#fff";
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    style={styles.primaryButton}
+                                    disabled={scannedItems.length === 0}
+                                    onClick={handleConfirmScannedItems}
+                                    onMouseEnter={(e) => {
+                                        if (scannedItems.length > 0) {
+                                            e.currentTarget.style.background = "#059669";
+                                            e.currentTarget.style.boxShadow = "0 6px 20px rgba(16, 185, 129, 0.4)";
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = "#10b981";
+                                        e.currentTarget.style.boxShadow = "0 4px 16px rgba(16, 185, 129, 0.3)";
+                                    }}
+                                >
+                                    Add {scannedItems.length} Item{scannedItems.length !== 1 ? 's' : ''} to Fridge
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
+
+            {/* CSS for spinner animation */}
+            <style>{`
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            `}</style>
         </>
     );
 }
