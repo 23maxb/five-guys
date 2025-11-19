@@ -5,7 +5,8 @@ from decouple import config
 SPOONACULAR_API_KEY = config('SPOONACULAR_API_KEY', default=None)
 
 if not SPOONACULAR_API_KEY:
-    raise ValueError(
-        "SPOONACULAR_API_KEY is not set. Please set it in your .env file. "
-        "See .env.example for reference."
-    )
+    SPOONACULAR_API_KEY = "KEY_HERE"
+    # raise ValueError(
+    #     "SPOONACULAR_API_KEY is not set. Please set it in your .env file. "
+    #     "See .env.example for reference."
+    # )
